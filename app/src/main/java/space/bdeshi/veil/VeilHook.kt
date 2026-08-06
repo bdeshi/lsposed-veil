@@ -10,7 +10,6 @@ import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
 import de.robv.android.xposed.XSharedPreferences
-import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 
@@ -167,24 +166,27 @@ class VeilHook : IXposedHookLoadPackage {
     ) {
         val clazz = XposedHelpers.findClassIfExists(className, lpparam.classLoader) ?: return
 
-        fun callOriginal(param: XC_MethodHook.MethodHookParam): Any? =
-            XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args)
-
-        val stringReplacement = object : XC_MethodReplacement() {
-            override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
-                val name = param.args.getOrNull(1) as? String ?: return callOriginal(param)
-                return when (name) {
-                    in nullStringKeys -> null
-                    in zeroValueKeys -> "0"
-                    else -> callOriginal(param)
+        // beforeHookedMethod + param.result, not XC_MethodReplacement: some overloads (e.g. the
+        // 2-arg Settings.Global.getInt) throw a checked SettingNotFoundException for keys they
+        // don't recognize. Manually calling XposedBridge.invokeOriginalMethod for the pass-through
+        // case routes through Method.invoke(), which wraps ANY exception the real method throws
+        // in InvocationTargetException — breaking callers that catch the real exception type.
+        // Leaving param untouched for the pass-through case lets the original run through its
+        // normal (non-reflective) path instead, so its real exceptions propagate correctly.
+        val stringHook = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                val name = param.args.getOrNull(1) as? String ?: return
+                when (name) {
+                    in nullStringKeys -> param.result = null
+                    in zeroValueKeys -> param.result = "0"
                 }
             }
         }
 
-        val intReplacement = object : XC_MethodReplacement() {
-            override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
-                val name = param.args.getOrNull(1) as? String ?: return callOriginal(param)
-                return if (name in zeroValueKeys) 0 else callOriginal(param)
+        val intHook = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                val name = param.args.getOrNull(1) as? String ?: return
+                if (name in zeroValueKeys) param.result = 0
             }
         }
 
@@ -200,7 +202,7 @@ class VeilHook : IXposedHookLoadPackage {
         for (methodName in listOf("getString", "getStringForUser")) {
             for (signature in signatures) {
                 try {
-                    XposedHelpers.findAndHookMethod(clazz, methodName, *signature, stringReplacement)
+                    XposedHelpers.findAndHookMethod(clazz, methodName, *signature, stringHook)
                 } catch (t: Throwable) {
                     // Not present with this signature on this API level.
                 }
@@ -210,7 +212,7 @@ class VeilHook : IXposedHookLoadPackage {
         for (methodName in listOf("getInt", "getIntForUser")) {
             for (signature in signatures) {
                 try {
-                    XposedHelpers.findAndHookMethod(clazz, methodName, *signature, intReplacement)
+                    XposedHelpers.findAndHookMethod(clazz, methodName, *signature, intHook)
                 } catch (t: Throwable) {
                     // Not present with this signature on this API level.
                 }
@@ -224,13 +226,17 @@ class VeilHook : IXposedHookLoadPackage {
             lpparam.classLoader,
         ) ?: return
 
-        val throwIfHidden = object : XC_MethodReplacement() {
-            override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
+        // See hookSettingsClass for why this is beforeHookedMethod + param.throwable rather than
+        // XC_MethodReplacement: getPackageInfo/getApplicationInfo throw NameNotFoundException for
+        // ANY not-installed package, not just ones we hide. Calling invokeOriginalMethod ourselves
+        // for the pass-through case would wrap that entirely normal exception in an
+        // InvocationTargetException via Method.invoke(), which callers don't expect and crash on.
+        val throwIfHidden = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
                 val name = param.args.getOrNull(0) as? String
                 if (name != null && name in hiddenPackages) {
-                    throw PackageManager.NameNotFoundException(name)
+                    param.throwable = PackageManager.NameNotFoundException(name)
                 }
-                return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args)
             }
         }
 
