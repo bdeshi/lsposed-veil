@@ -3,23 +3,22 @@ package space.bdeshi.veil
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
+import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 
 private const val SELF_PACKAGE = "space.bdeshi.veil"
 
-// Settings keys whose *string* reads should look absent to the hooked app.
-private val NULL_STRING_KEYS = setOf(
-    "enabled_accessibility_services",
+private val NULL_STRING_KEYS_BY_FEATURE = mapOf(
+    Features.ACCESSIBILITY to setOf("enabled_accessibility_services"),
 )
 
-// Settings keys whose reads (string "0" / int 0) should look disabled to the hooked app.
-private val ZERO_VALUE_KEYS = setOf(
-    "accessibility_enabled",
-    "touch_exploration_enabled",
-    "adb_enabled",
-    "adb_wifi_enabled",
+private val ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
+    Features.ACCESSIBILITY to setOf("accessibility_enabled", "touch_exploration_enabled"),
+    Features.ADB to setOf("adb_enabled", "adb_wifi_enabled"),
+    Features.DEV_OPTIONS to setOf("development_settings_enabled"),
+    Features.MOCK_LOCATION to setOf("mock_location", "allow_mock_location"),
 )
 
 class HideA11yHook : IXposedHookLoadPackage {
@@ -27,9 +26,30 @@ class HideA11yHook : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
         if (lpparam.packageName == SELF_PACKAGE) return
 
-        hookAccessibilityManager(lpparam)
-        hookSettingsClass("android.provider.Settings\$Secure", lpparam)
-        hookSettingsClass("android.provider.Settings\$Global", lpparam)
+        val enabled = readEnabledFeatures(lpparam.packageName)
+        if (enabled.isEmpty()) return
+
+        if (Features.ACCESSIBILITY in enabled) {
+            hookAccessibilityManager(lpparam)
+        }
+
+        val nullStringKeys = enabled.flatMap { NULL_STRING_KEYS_BY_FEATURE[it].orEmpty() }.toSet()
+        val zeroValueKeys = enabled.flatMap { ZERO_VALUE_KEYS_BY_FEATURE[it].orEmpty() }.toSet()
+        if (nullStringKeys.isNotEmpty() || zeroValueKeys.isNotEmpty()) {
+            hookSettingsClass("android.provider.Settings\$Secure", lpparam, nullStringKeys, zeroValueKeys)
+            hookSettingsClass("android.provider.Settings\$Global", lpparam, nullStringKeys, zeroValueKeys)
+        }
+    }
+
+    private fun readEnabledFeatures(packageName: String): Set<String> {
+        return try {
+            val prefs = XSharedPreferences(SELF_PACKAGE, Features.PREFS_NAME)
+            prefs.reload()
+            prefs.getStringSet(Features.keyFor(packageName), Features.ALL) ?: Features.ALL
+        } catch (t: Throwable) {
+            // Config unreadable (e.g. never configured, or permissions not yet fixed) — fail open to "hide everything".
+            Features.ALL
+        }
     }
 
     private fun hookAccessibilityManager(lpparam: LoadPackageParam) {
@@ -60,7 +80,12 @@ class HideA11yHook : IXposedHookLoadPackage {
         hook("isTouchExplorationEnabled", result = false)
     }
 
-    private fun hookSettingsClass(className: String, lpparam: LoadPackageParam) {
+    private fun hookSettingsClass(
+        className: String,
+        lpparam: LoadPackageParam,
+        nullStringKeys: Set<String>,
+        zeroValueKeys: Set<String>,
+    ) {
         val clazz = XposedHelpers.findClassIfExists(className, lpparam.classLoader) ?: return
 
         fun callOriginal(param: XC_MethodHook.MethodHookParam): Any? =
@@ -70,8 +95,8 @@ class HideA11yHook : IXposedHookLoadPackage {
             override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
                 val name = param.args.getOrNull(1) as? String ?: return callOriginal(param)
                 return when (name) {
-                    in NULL_STRING_KEYS -> null
-                    in ZERO_VALUE_KEYS -> "0"
+                    in nullStringKeys -> null
+                    in zeroValueKeys -> "0"
                     else -> callOriginal(param)
                 }
             }
@@ -80,7 +105,7 @@ class HideA11yHook : IXposedHookLoadPackage {
         val intReplacement = object : XC_MethodReplacement() {
             override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
                 val name = param.args.getOrNull(1) as? String ?: return callOriginal(param)
-                return if (name in ZERO_VALUE_KEYS) 0 else callOriginal(param)
+                return if (name in zeroValueKeys) 0 else callOriginal(param)
             }
         }
 
