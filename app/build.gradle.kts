@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import java.util.Properties
 
 plugins {
@@ -12,6 +13,36 @@ if (hasReleaseKeystore) {
     keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
+// versionName/versionCode come from git, not a hand-maintained literal, so a release tag and
+// the app's own version can never drift apart. Exactly on a tagged commit this is the tag
+// itself (e.g. "1.0.0"); otherwise it's "<last-tag>-<commits-since>-g<hash>" (git-describe's
+// usual dev-build form). No tags yet, or git unavailable: falls back to "0.0.0".
+fun gitDescribe(): String {
+    return try {
+        val out = ByteArrayOutputStream()
+        exec {
+            commandLine("git", "describe", "--tags", "--always")
+            standardOutput = out
+        }
+        out.toString().trim()
+    } catch (e: Exception) {
+        "0.0.0"
+    }
+}
+
+fun gitCommitCount(): Int {
+    return try {
+        val out = ByteArrayOutputStream()
+        exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+            standardOutput = out
+        }
+        out.toString().trim().toInt()
+    } catch (e: Exception) {
+        1
+    }
+}
+
 android {
     namespace = "space.bdeshi.veil"
     compileSdk = 35
@@ -23,8 +54,8 @@ android {
         // on which OS versions can install and run the app.
         minSdk = 27
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = gitCommitCount()
+        versionName = gitDescribe()
     }
 
     signingConfigs {
