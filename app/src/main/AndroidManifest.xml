@@ -25,5 +25,10 @@
             </intent-filter>
         </activity>
 
+        <provider
+            android:name=".VeilProvider"
+            android:authorities="space.bdeshi.veil.provider"
+            android:exported="true" />
+
     </application>
 </manifest>

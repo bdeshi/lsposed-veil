@@ -1,8 +1,10 @@
 package space.bdeshi.veil
 
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
@@ -47,6 +49,8 @@ class VeilHook : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
         if (lpparam.packageName == SELF_PACKAGE) return
 
+        reportScoped(lpparam)
+
         val prefs = openPrefs()
         val enabled = readEnabledFeatures(prefs, lpparam.packageName)
         if (enabled.isEmpty()) return
@@ -75,6 +79,37 @@ class VeilHook : IXposedHookLoadPackage {
 
         if (Features.BUILD_TAGS in enabled) {
             spoofBuildTags()
+        }
+    }
+
+    // Lets Veil's own settings screen list this app automatically, without the user re-typing
+    // a package name it can already see was actually injected. Application#attach is the
+    // earliest reliable point at which a real Context exists in the hooked process.
+    private fun reportScoped(lpparam: LoadPackageParam) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.app.Application",
+                lpparam.classLoader,
+                "attach",
+                Context::class.java,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        try {
+                            val context = param.args[0] as Context
+                            context.contentResolver.call(
+                                Uri.parse("content://${Features.PROVIDER_AUTHORITY}"),
+                                "register",
+                                lpparam.packageName,
+                                null,
+                            )
+                        } catch (t: Throwable) {
+                            // Veil app unreachable — doesn't affect the hiding hooks below.
+                        }
+                    }
+                },
+            )
+        } catch (t: Throwable) {
+            // Application#attach signature not present — safe to skip discovery only.
         }
     }
 

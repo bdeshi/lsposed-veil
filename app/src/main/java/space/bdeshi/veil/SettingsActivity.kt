@@ -178,37 +178,53 @@ class SettingsActivity : Activity() {
     private fun hiddenPackages(): Set<String> =
         prefs.getStringSet(Features.HIDDEN_PACKAGES_KEY, Features.DEFAULT_HIDDEN_PACKAGES) ?: Features.DEFAULT_HIDDEN_PACKAGES
 
+    private fun configuredPackages(): Set<String> =
+        prefs.all.keys.filter { it.startsWith(Features.KEY_PREFIX) }.map { it.removePrefix(Features.KEY_PREFIX) }.toSet()
+
+    private fun discoveredPackages(): Set<String> =
+        prefs.getStringSet(Features.DISCOVERED_PACKAGES_KEY, emptySet()) ?: emptySet()
+
     private fun refreshAppList() {
         appListContainer.removeAllViews()
-        val packages = prefs.all.keys
-            .filter { it.startsWith(Features.KEY_PREFIX) }
-            .map { it.removePrefix(Features.KEY_PREFIX) }
-            .sorted()
+        val configured = configuredPackages()
+        val packages = (configured + discoveredPackages()).sorted()
 
         if (packages.isEmpty()) {
             appListContainer.addView(TextView(this).apply {
-                text = "No apps configured yet."
+                text = "No apps yet — scope Veil to a target app in LSPosed Manager and open " +
+                    "it once, or add a package name above."
             })
             return
         }
 
         for (pkg in packages) {
-            appListContainer.addView(buildPackageCard(pkg))
+            appListContainer.addView(buildPackageCard(pkg, isDiscoveredOnly = pkg !in configured))
         }
     }
 
-    private fun buildPackageCard(pkg: String): View {
+    private fun buildPackageCard(pkg: String, isDiscoveredOnly: Boolean): View {
         val enabled = prefs.getStringSet(Features.keyFor(pkg), Features.ALL) ?: Features.ALL
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, dp(12))
         }
-        card.addView(TextView(this).apply {
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(TextView(this).apply {
             text = pkg
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
         })
+        if (isDiscoveredOnly) {
+            titleRow.addView(TextView(this).apply {
+                text = " (auto-detected)"
+                textSize = 13f
+            })
+        }
+        card.addView(titleRow)
         card.addView(TextView(this).apply {
             text = "Checking a box below hides that thing from this app specifically — it stays " +
                 "on for every other app."

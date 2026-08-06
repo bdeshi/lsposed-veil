@@ -6,6 +6,8 @@ object Features {
     const val PREFS_NAME = "veil_prefs"
     const val KEY_PREFIX = "features_"
     const val HIDDEN_PACKAGES_KEY = "hidden_packages"
+    const val DISCOVERED_PACKAGES_KEY = "discovered_packages"
+    const val PROVIDER_AUTHORITY = "space.bdeshi.veil.provider"
 
     const val ACCESSIBILITY = "accessibility"
     const val ADB = "adb"
