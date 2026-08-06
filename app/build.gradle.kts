@@ -33,4 +33,6 @@ android {
 
 dependencies {
     compileOnly("de.robv.android.xposed:api:82")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
 }

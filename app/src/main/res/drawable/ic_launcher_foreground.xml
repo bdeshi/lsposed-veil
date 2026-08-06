@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A moon-like disc, partially eclipsed by a diagonal veil (cut in the background color) -->
+    <path
+        android:fillColor="#F2EDE4"
+        android:pathData="M28,54 A26,26 0 1,1 80,54 A26,26 0 1,1 28,54 Z" />
+    <path
+        android:fillColor="#1B1B3A"
+        android:pathData="M12,68 L36,92 L96,32 L72,8 Z" />
+</vector>

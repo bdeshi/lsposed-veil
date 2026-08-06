@@ -1,6 +1,5 @@
 package space.bdeshi.veil
 
-import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Typeface
@@ -8,12 +7,17 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.checkbox.MaterialCheckBox
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import java.io.File
 
 private val HELP_TIPS: List<Pair<String, String>> = listOf(
@@ -35,19 +39,19 @@ private val HELP_TIPS: List<Pair<String, String>> = listOf(
         "the target app. No log lines from Veil there usually means it never got injected " +
         "(see the DenyList tip above), not a bug in this module.",
     "Forgot what an unconfigured app does?" to
-        "Any app not in the list above gets every feature applied by default — check here " +
+        "Any app not in the list below gets every feature applied by default — check here " +
         "first if something's being hidden that you didn't expect.",
 )
 
-class SettingsActivity : Activity() {
+class SettingsActivity : AppCompatActivity() {
 
     private lateinit var prefs: SharedPreferences
     private lateinit var appListContainer: LinearLayout
-    private lateinit var hiddenPackagesContainer: LinearLayout
-    private lateinit var helpContainer: LinearLayout
-    private lateinit var helpToggle: Button
-    private lateinit var packageInput: EditText
-    private lateinit var hiddenPackageInput: EditText
+    private lateinit var hiddenPackagesChips: ChipGroup
+    private lateinit var helpContainer: View
+    private lateinit var helpToggle: MaterialButton
+    private lateinit var packageInput: TextInputEditText
+    private lateinit var hiddenPackageInput: TextInputEditText
     private var helpVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,11 +66,17 @@ class SettingsActivity : Activity() {
 
         root.addView(TextView(this).apply {
             text = "Veil"
-            textSize = 20f
+            textSize = 26f
             setTypeface(typeface, Typeface.BOLD)
         })
+        root.addView(TextView(this).apply {
+            text = "Hide device state from specific apps, per app."
+            textSize = 14f
+            alpha = 0.7f
+            setPadding(0, dp(2), 0, dp(16))
+        })
 
-        helpToggle = Button(this).apply {
+        helpToggle = MaterialButton(this).apply {
             text = "Help & troubleshooting ▾"
             setOnClickListener {
                 helpVisible = !helpVisible
@@ -76,36 +86,34 @@ class SettingsActivity : Activity() {
         }
         root.addView(helpToggle)
 
-        helpContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(8), 0, dp(8))
-            visibility = View.GONE
-            for ((title, body) in HELP_TIPS) {
-                addView(TextView(this@SettingsActivity).apply {
-                    text = title
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, dp(8), 0, dp(2))
-                })
-                addView(TextView(this@SettingsActivity).apply {
-                    text = body
-                    textSize = 13f
-                })
-            }
+        val (helpCard, helpContent) = card()
+        helpCard.visibility = View.GONE
+        helpContainer = helpCard
+        for ((title, body) in HELP_TIPS) {
+            helpContent.addView(TextView(this).apply {
+                text = title
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(8), 0, dp(2))
+            })
+            helpContent.addView(TextView(this).apply {
+                text = body
+                textSize = 13f
+                alpha = 0.85f
+            })
         }
-        root.addView(helpContainer)
+        root.addView(helpCard, marginTop(dp(8)))
 
+        root.addView(sectionTitle("Apps"))
         root.addView(TextView(this).apply {
             text = "Add the package name of an app you've scoped this module to in LSPosed, " +
-                "then choose which checks to hide from it. Apps you haven't added here get " +
-                "everything hidden by default (matches this module's original behavior)."
-            setPadding(0, dp(8), 0, dp(16))
+                "or just scope it in LSPosed and open the target app once — Veil picks it up " +
+                "automatically. Apps not listed here get everything hidden by default."
+            textSize = 13f
+            alpha = 0.8f
+            setPadding(0, dp(4), 0, dp(8))
         })
 
-        packageInput = EditText(this).apply {
-            hint = "e.g. com.example.targetapp"
-            inputType = InputType.TYPE_CLASS_TEXT
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
+        packageInput = textInput("e.g. com.example.targetapp")
         root.addView(addRow(packageInput) {
             val pkg = packageInput.text.toString().trim()
             if (pkg.isNotEmpty() && pkg.contains(".")) {
@@ -118,28 +126,20 @@ class SettingsActivity : Activity() {
 
         appListContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(16), 0, 0)
+            setPadding(0, dp(8), 0, 0)
         }
         root.addView(appListContainer)
 
+        root.addView(sectionTitle("Packages hidden from PackageManager"), marginTop(dp(24)))
         root.addView(TextView(this).apply {
-            text = "Packages hidden from PackageManager"
-            textSize = 18f
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(24), 0, dp(4))
-        })
-        root.addView(TextView(this).apply {
-            text = "Used by the \"Hide root / manager apps\" checkbox above — apps in this list " +
-                "become invisible to PackageManager lookups for any target app with that box " +
-                "checked."
-            setPadding(0, 0, 0, dp(8))
+            text = "Used by the \"Hide root / manager apps\" checkbox above — apps here become " +
+                "invisible to PackageManager lookups for any target app with that box checked."
+            textSize = 13f
+            alpha = 0.8f
+            setPadding(0, dp(4), 0, dp(8))
         })
 
-        hiddenPackageInput = EditText(this).apply {
-            hint = "e.g. me.weishu.kernelsu"
-            inputType = InputType.TYPE_CLASS_TEXT
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
+        hiddenPackageInput = textInput("e.g. me.weishu.kernelsu")
         root.addView(addRow(hiddenPackageInput) {
             val pkg = hiddenPackageInput.text.toString().trim()
             if (pkg.isNotEmpty() && pkg.contains(".")) {
@@ -152,27 +152,67 @@ class SettingsActivity : Activity() {
             }
         })
 
-        hiddenPackagesContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        hiddenPackagesChips = ChipGroup(this).apply {
             setPadding(0, dp(8), 0, 0)
         }
-        root.addView(hiddenPackagesContainer)
+        root.addView(hiddenPackagesChips)
 
         setContentView(ScrollView(this).apply { addView(root) })
         refreshAppList()
         refreshHiddenPackages()
     }
 
-    private fun addRow(input: EditText, onAdd: () -> Unit): View {
+    private fun sectionTitle(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 18f
+        setTypeface(typeface, Typeface.BOLD)
+    }
+
+    private fun marginTop(px: Int): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = px
+        }
+
+    private fun textInput(hintText: String): TextInputEditText {
+        val editText = TextInputEditText(this).apply {
+            hint = hintText
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        return editText
+    }
+
+    private fun addRow(input: TextInputEditText, onAdd: () -> Unit): View {
+        val layout = TextInputLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            addView(input)
+        }
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(input)
-            addView(Button(this@SettingsActivity).apply {
+            addView(layout)
+            addView(MaterialButton(this@SettingsActivity).apply {
                 text = "Add"
                 setOnClickListener { onAdd() }
             })
         }
+    }
+
+    /** A MaterialCardView with an inner padded vertical container, added to root with bottom margin. */
+    private fun card(): Pair<MaterialCardView, LinearLayout> {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        val cardView = MaterialCardView(this).apply {
+            radius = dp(12).toFloat()
+            cardElevation = dp(1).toFloat()
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) }
+            addView(content)
+        }
+        return cardView to content
     }
 
     private fun hiddenPackages(): Set<String> =
@@ -193,6 +233,8 @@ class SettingsActivity : Activity() {
             appListContainer.addView(TextView(this).apply {
                 text = "No apps yet — scope Veil to a target app in LSPosed Manager and open " +
                     "it once, or add a package name above."
+                textSize = 13f
+                alpha = 0.8f
             })
             return
         }
@@ -204,11 +246,8 @@ class SettingsActivity : Activity() {
 
     private fun buildPackageCard(pkg: String, isDiscoveredOnly: Boolean): View {
         val enabled = prefs.getStringSet(Features.keyFor(pkg), Features.ALL) ?: Features.ALL
+        val (cardView, content) = card()
 
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(12), 0, dp(12))
-        }
         val titleRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -217,22 +256,27 @@ class SettingsActivity : Activity() {
             text = pkg
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         if (isDiscoveredOnly) {
-            titleRow.addView(TextView(this).apply {
-                text = " (auto-detected)"
-                textSize = 13f
+            titleRow.addView(Chip(this).apply {
+                text = "Auto-detected"
+                isClickable = false
+                isCheckable = false
             })
         }
-        card.addView(titleRow)
-        card.addView(TextView(this).apply {
-            text = "Checking a box below hides that thing from this app specifically — it stays " +
-                "on for every other app."
-            setPadding(0, 0, 0, dp(8))
+        content.addView(titleRow)
+
+        content.addView(TextView(this).apply {
+            text = "Checking a box below hides that thing from this app specifically — it " +
+                "stays on for every other app."
+            textSize = 12f
+            alpha = 0.7f
+            setPadding(0, dp(2), 0, dp(8))
         })
 
         for ((id, info) in Features.INFO) {
-            card.addView(CheckBox(this).apply {
+            content.addView(MaterialCheckBox(this).apply {
                 text = info.label
                 isChecked = id in enabled
                 setOnCheckedChangeListener { _, isChecked ->
@@ -242,15 +286,16 @@ class SettingsActivity : Activity() {
                     fixPermissions()
                 }
             })
-            card.addView(TextView(this).apply {
+            content.addView(TextView(this).apply {
                 text = info.description
                 textSize = 13f
+                alpha = 0.7f
                 setPadding(dp(32), 0, 0, dp(8))
             })
         }
 
-        card.addView(Button(this).apply {
-            text = "Remove (revert to default: hide everything)"
+        content.addView(MaterialButton(this).apply {
+            text = "Apply defaults (hide everything)"
             setOnClickListener {
                 prefs.edit().remove(Features.keyFor(pkg)).apply()
                 fixPermissions()
@@ -258,32 +303,16 @@ class SettingsActivity : Activity() {
             }
         })
 
-        return card
+        return cardView
     }
 
     private fun refreshHiddenPackages() {
-        hiddenPackagesContainer.removeAllViews()
-        val packages = hiddenPackages().sorted()
-
-        if (packages.isEmpty()) {
-            hiddenPackagesContainer.addView(TextView(this).apply {
-                text = "None configured."
-            })
-            return
-        }
-
-        for (pkg in packages) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            row.addView(TextView(this).apply {
+        hiddenPackagesChips.removeAllViews()
+        for (pkg in hiddenPackages().sorted()) {
+            hiddenPackagesChips.addView(Chip(this).apply {
                 text = pkg
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            row.addView(Button(this).apply {
-                text = "Remove"
-                setOnClickListener {
+                isCloseIconVisible = true
+                setOnCloseIconClickListener {
                     val current = hiddenPackages().toMutableSet()
                     current.remove(pkg)
                     prefs.edit().putStringSet(Features.HIDDEN_PACKAGES_KEY, current).apply()
@@ -291,7 +320,6 @@ class SettingsActivity : Activity() {
                     refreshHiddenPackages()
                 }
             })
-            hiddenPackagesContainer.addView(row)
         }
     }
 
