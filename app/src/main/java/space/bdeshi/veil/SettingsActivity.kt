@@ -145,7 +145,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(hiddenPackagesChips)
 
-        setContentView(ScrollView(this).apply { addView(root) })
+        setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         refreshAppList()
         refreshHiddenPackages()
     }
