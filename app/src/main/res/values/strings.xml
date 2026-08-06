@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Hide A11y</string>
+    <string name="module_description">Hides accessibility service state from apps selected in LSPosed scope</string>
+</resources>
