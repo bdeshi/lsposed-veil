@@ -50,7 +50,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var hiddenPackagesChips: ChipGroup
     private lateinit var helpContainer: View
     private lateinit var helpToggle: MaterialButton
-    private lateinit var packageInput: TextInputEditText
     private lateinit var hiddenPackageInput: TextInputEditText
     private var helpVisible = false
 
@@ -105,23 +104,12 @@ class SettingsActivity : AppCompatActivity() {
 
         root.addView(sectionTitle("Apps"))
         root.addView(TextView(this).apply {
-            text = "Add the package name of an app you've scoped this module to in LSPosed, " +
-                "or just scope it in LSPosed and open the target app once — Veil picks it up " +
-                "automatically. Apps not listed here get everything hidden by default."
+            text = "Scope this module to a target app in LSPosed Manager, then open that app " +
+                "once — it shows up here automatically. Apps not listed here get everything " +
+                "hidden by default."
             textSize = 13f
             alpha = 0.8f
             setPadding(0, dp(4), 0, dp(8))
-        })
-
-        packageInput = textInput("e.g. com.example.targetapp")
-        root.addView(addRow(packageInput) {
-            val pkg = packageInput.text.toString().trim()
-            if (pkg.isNotEmpty() && pkg.contains(".")) {
-                prefs.edit().putStringSet(Features.keyFor(pkg), Features.ALL.toMutableSet()).apply()
-                fixPermissions()
-                packageInput.setText("")
-                refreshAppList()
-            }
         })
 
         appListContainer = LinearLayout(this).apply {
@@ -232,7 +220,7 @@ class SettingsActivity : AppCompatActivity() {
         if (packages.isEmpty()) {
             appListContainer.addView(TextView(this).apply {
                 text = "No apps yet — scope Veil to a target app in LSPosed Manager and open " +
-                    "it once, or add a package name above."
+                    "it once."
                 textSize = 13f
                 alpha = 0.8f
             })
