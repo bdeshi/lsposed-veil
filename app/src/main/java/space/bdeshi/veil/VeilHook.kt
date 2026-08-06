@@ -1,5 +1,9 @@
 package space.bdeshi.veil
 
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
@@ -21,12 +25,13 @@ private val ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
     Features.MOCK_LOCATION to setOf("mock_location", "allow_mock_location"),
 )
 
-class HideA11yHook : IXposedHookLoadPackage {
+class VeilHook : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
         if (lpparam.packageName == SELF_PACKAGE) return
 
-        val enabled = readEnabledFeatures(lpparam.packageName)
+        val prefs = openPrefs()
+        val enabled = readEnabledFeatures(prefs, lpparam.packageName)
         if (enabled.isEmpty()) return
 
         if (Features.ACCESSIBILITY in enabled) {
@@ -39,17 +44,35 @@ class HideA11yHook : IXposedHookLoadPackage {
             hookSettingsClass("android.provider.Settings\$Secure", lpparam, nullStringKeys, zeroValueKeys)
             hookSettingsClass("android.provider.Settings\$Global", lpparam, nullStringKeys, zeroValueKeys)
         }
+
+        if (Features.ROOT_APPS in enabled) {
+            val hiddenPackages = readHiddenPackages(prefs)
+            if (hiddenPackages.isNotEmpty()) {
+                hookPackageManager(lpparam, hiddenPackages)
+            }
+        }
+
+        if (Features.BUILD_TAGS in enabled) {
+            spoofBuildTags()
+        }
     }
 
-    private fun readEnabledFeatures(packageName: String): Set<String> {
+    private fun openPrefs(): XSharedPreferences? {
         return try {
-            val prefs = XSharedPreferences(SELF_PACKAGE, Features.PREFS_NAME)
-            prefs.reload()
-            prefs.getStringSet(Features.keyFor(packageName), Features.ALL) ?: Features.ALL
+            XSharedPreferences(SELF_PACKAGE, Features.PREFS_NAME).apply { reload() }
         } catch (t: Throwable) {
-            // Config unreadable (e.g. never configured, or permissions not yet fixed) — fail open to "hide everything".
-            Features.ALL
+            null
         }
+    }
+
+    private fun readEnabledFeatures(prefs: XSharedPreferences?, packageName: String): Set<String> {
+        // Config unreadable (never configured, or permissions not yet fixed) — fail open to "hide everything".
+        return prefs?.getStringSet(Features.keyFor(packageName), Features.ALL) ?: Features.ALL
+    }
+
+    private fun readHiddenPackages(prefs: XSharedPreferences?): Set<String> {
+        return prefs?.getStringSet(Features.HIDDEN_PACKAGES_KEY, Features.DEFAULT_HIDDEN_PACKAGES)
+            ?: Features.DEFAULT_HIDDEN_PACKAGES
     }
 
     private fun hookAccessibilityManager(lpparam: LoadPackageParam) {
@@ -136,6 +159,78 @@ class HideA11yHook : IXposedHookLoadPackage {
                     // Not present with this signature on this API level.
                 }
             }
+        }
+    }
+
+    private fun hookPackageManager(lpparam: LoadPackageParam, hiddenPackages: Set<String>) {
+        val clazz = XposedHelpers.findClassIfExists(
+            "android.app.ApplicationPackageManager",
+            lpparam.classLoader,
+        ) ?: return
+
+        val throwIfHidden = object : XC_MethodReplacement() {
+            override fun replaceHookedMethod(param: XC_MethodHook.MethodHookParam): Any? {
+                val name = param.args.getOrNull(0) as? String
+                if (name != null && name in hiddenPackages) {
+                    throw PackageManager.NameNotFoundException(name)
+                }
+                return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args)
+            }
+        }
+
+        val filterList = object : XC_MethodHook() {
+            override fun afterHookedMethod(param: MethodHookParam) {
+                @Suppress("UNCHECKED_CAST")
+                val list = param.result as? MutableList<Any?> ?: return
+                list.removeAll { entry ->
+                    val name = (entry as? PackageInfo)?.packageName ?: (entry as? ApplicationInfo)?.packageName
+                    name != null && name in hiddenPackages
+                }
+            }
+        }
+
+        val flagsClasses = listOfNotNull(
+            Int::class.javaPrimitiveType,
+            XposedHelpers.findClassIfExists("android.content.pm.PackageManager\$PackageInfoFlags", lpparam.classLoader),
+        )
+        val appFlagsClasses = listOfNotNull(
+            Int::class.javaPrimitiveType,
+            XposedHelpers.findClassIfExists("android.content.pm.PackageManager\$ApplicationInfoFlags", lpparam.classLoader),
+        )
+        val stringType = String::class.java
+
+        for (flagsType in flagsClasses) {
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getPackageInfo", stringType, flagsType, throwIfHidden)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getInstalledPackages", flagsType, filterList)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+        }
+        for (flagsType in appFlagsClasses) {
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getApplicationInfo", stringType, flagsType, throwIfHidden)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getInstalledApplications", flagsType, filterList)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+        }
+    }
+
+    private fun spoofBuildTags() {
+        try {
+            XposedHelpers.setStaticObjectField(Build::class.java, "TAGS", "release-keys")
+            XposedHelpers.setStaticObjectField(Build::class.java, "TYPE", "user")
+        } catch (t: Throwable) {
+            // Field not present/settable on this API level — safe to skip.
         }
     }
 }

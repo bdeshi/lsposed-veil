@@ -19,8 +19,10 @@ import java.io.File
 class SettingsActivity : Activity() {
 
     private lateinit var prefs: SharedPreferences
-    private lateinit var listContainer: LinearLayout
+    private lateinit var appListContainer: LinearLayout
+    private lateinit var hiddenPackagesContainer: LinearLayout
     private lateinit var packageInput: EditText
+    private lateinit var hiddenPackageInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,7 +35,7 @@ class SettingsActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Hide A11y"
+            text = "Veil"
             textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
         })
@@ -44,57 +46,99 @@ class SettingsActivity : Activity() {
             setPadding(0, dp(8), 0, dp(16))
         })
 
-        val addRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
         packageInput = EditText(this).apply {
             hint = "e.g. com.example.targetapp"
             inputType = InputType.TYPE_CLASS_TEXT
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val addButton = Button(this).apply {
-            text = "Add"
-            setOnClickListener {
-                val pkg = packageInput.text.toString().trim()
-                if (pkg.isNotEmpty() && pkg.contains(".")) {
-                    prefs.edit().putStringSet(Features.keyFor(pkg), Features.ALL.toMutableSet()).apply()
-                    fixPermissions()
-                    packageInput.setText("")
-                    refreshList()
-                }
+        root.addView(addRow(packageInput) {
+            val pkg = packageInput.text.toString().trim()
+            if (pkg.isNotEmpty() && pkg.contains(".")) {
+                prefs.edit().putStringSet(Features.keyFor(pkg), Features.ALL.toMutableSet()).apply()
+                fixPermissions()
+                packageInput.setText("")
+                refreshAppList()
             }
-        }
-        addRow.addView(packageInput)
-        addRow.addView(addButton)
-        root.addView(addRow)
+        })
 
-        listContainer = LinearLayout(this).apply {
+        appListContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(16), 0, 0)
         }
-        root.addView(listContainer)
+        root.addView(appListContainer)
+
+        root.addView(TextView(this).apply {
+            text = "Packages hidden from PackageManager"
+            textSize = 18f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(24), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Used by the \"Root/manager apps\" toggle above — apps in this list become " +
+                "invisible to getPackageInfo/getInstalledPackages for any target app with that " +
+                "toggle on."
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        hiddenPackageInput = EditText(this).apply {
+            hint = "e.g. me.weishu.kernelsu"
+            inputType = InputType.TYPE_CLASS_TEXT
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        root.addView(addRow(hiddenPackageInput) {
+            val pkg = hiddenPackageInput.text.toString().trim()
+            if (pkg.isNotEmpty() && pkg.contains(".")) {
+                val current = hiddenPackages().toMutableSet()
+                current.add(pkg)
+                prefs.edit().putStringSet(Features.HIDDEN_PACKAGES_KEY, current).apply()
+                fixPermissions()
+                hiddenPackageInput.setText("")
+                refreshHiddenPackages()
+            }
+        })
+
+        hiddenPackagesContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        root.addView(hiddenPackagesContainer)
 
         setContentView(ScrollView(this).apply { addView(root) })
-        refreshList()
+        refreshAppList()
+        refreshHiddenPackages()
     }
 
-    private fun refreshList() {
-        listContainer.removeAllViews()
+    private fun addRow(input: EditText, onAdd: () -> Unit): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(input)
+            addView(Button(this@SettingsActivity).apply {
+                text = "Add"
+                setOnClickListener { onAdd() }
+            })
+        }
+    }
+
+    private fun hiddenPackages(): Set<String> =
+        prefs.getStringSet(Features.HIDDEN_PACKAGES_KEY, Features.DEFAULT_HIDDEN_PACKAGES) ?: Features.DEFAULT_HIDDEN_PACKAGES
+
+    private fun refreshAppList() {
+        appListContainer.removeAllViews()
         val packages = prefs.all.keys
             .filter { it.startsWith(Features.KEY_PREFIX) }
             .map { it.removePrefix(Features.KEY_PREFIX) }
             .sorted()
 
         if (packages.isEmpty()) {
-            listContainer.addView(TextView(this).apply {
+            appListContainer.addView(TextView(this).apply {
                 text = "No apps configured yet."
             })
             return
         }
 
         for (pkg in packages) {
-            listContainer.addView(buildPackageCard(pkg))
+            appListContainer.addView(buildPackageCard(pkg))
         }
     }
 
@@ -129,11 +173,45 @@ class SettingsActivity : Activity() {
             setOnClickListener {
                 prefs.edit().remove(Features.keyFor(pkg)).apply()
                 fixPermissions()
-                refreshList()
+                refreshAppList()
             }
         })
 
         return card
+    }
+
+    private fun refreshHiddenPackages() {
+        hiddenPackagesContainer.removeAllViews()
+        val packages = hiddenPackages().sorted()
+
+        if (packages.isEmpty()) {
+            hiddenPackagesContainer.addView(TextView(this).apply {
+                text = "None configured."
+            })
+            return
+        }
+
+        for (pkg in packages) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(this).apply {
+                text = pkg
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            row.addView(Button(this).apply {
+                text = "Remove"
+                setOnClickListener {
+                    val current = hiddenPackages().toMutableSet()
+                    current.remove(pkg)
+                    prefs.edit().putStringSet(Features.HIDDEN_PACKAGES_KEY, current).apply()
+                    fixPermissions()
+                    refreshHiddenPackages()
+                }
+            })
+            hiddenPackagesContainer.addView(row)
+        }
     }
 
     // LSPosed's own SELinux policy is what actually lets hooked processes read this file;

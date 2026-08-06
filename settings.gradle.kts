@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hidea11y"
+rootProject.name = "veil"
 include(":app")

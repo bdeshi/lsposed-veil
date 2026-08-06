@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Hide A11y</string>
-    <string name="module_description">Hides accessibility service state from apps selected in LSPosed scope</string>
+    <string name="app_name">Veil</string>
+    <string name="module_description">Hides accessibility, debugging, and root/hook state from apps selected per-package in the settings screen</string>
 </resources>
