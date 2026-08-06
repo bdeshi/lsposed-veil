@@ -16,13 +16,39 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
+private val HELP_TIPS: List<Pair<String, String>> = listOf(
+    "Target app still won't launch?" to
+        "Check KernelSU Manager → the target app's profile → make sure \"Umount modules\" " +
+        "is OFF for it. When that's on, Zygisk (and therefore LSPosed) skips loading into that " +
+        "app's process entirely — no Veil setting can work around that, since the module " +
+        "never gets injected in the first place.",
+    "Using a separate Zygisk implementation?" to
+        "Standalone Zygisk modules (e.g. Zygisk Next / ReZygisk) can carry their own independent " +
+        "DenyList on top of KernelSU's. If an app is still being skipped after fixing the above, " +
+        "check there too.",
+    "Changed a setting but nothing happened?" to
+        "Force-stop and reopen the target app. Veil reads its config once when that app's " +
+        "process starts, so changes here (or to LSPosed scope) only take effect on the next " +
+        "cold start — a full device reboot usually isn't necessary.",
+    "How to confirm it's actually working" to
+        "Turn on verbose logging in LSPosed Manager, then check its Logs tab after relaunching " +
+        "the target app. No log lines from Veil there usually means it never got injected " +
+        "(see the DenyList tip above), not a bug in this module.",
+    "Forgot what an unconfigured app does?" to
+        "Any app not in the list above gets every feature applied by default — check here " +
+        "first if something's being hidden that you didn't expect.",
+)
+
 class SettingsActivity : Activity() {
 
     private lateinit var prefs: SharedPreferences
     private lateinit var appListContainer: LinearLayout
     private lateinit var hiddenPackagesContainer: LinearLayout
+    private lateinit var helpContainer: LinearLayout
+    private lateinit var helpToggle: Button
     private lateinit var packageInput: EditText
     private lateinit var hiddenPackageInput: EditText
+    private var helpVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +65,35 @@ class SettingsActivity : Activity() {
             textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
         })
+
+        helpToggle = Button(this).apply {
+            text = "Help & troubleshooting ▾"
+            setOnClickListener {
+                helpVisible = !helpVisible
+                helpContainer.visibility = if (helpVisible) View.VISIBLE else View.GONE
+                text = if (helpVisible) "Help & troubleshooting ▴" else "Help & troubleshooting ▾"
+            }
+        }
+        root.addView(helpToggle)
+
+        helpContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(8))
+            visibility = View.GONE
+            for ((title, body) in HELP_TIPS) {
+                addView(TextView(this@SettingsActivity).apply {
+                    text = title
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, dp(8), 0, dp(2))
+                })
+                addView(TextView(this@SettingsActivity).apply {
+                    text = body
+                    textSize = 13f
+                })
+            }
+        }
+        root.addView(helpContainer)
+
         root.addView(TextView(this).apply {
             text = "Add the package name of an app you've scoped this module to in LSPosed, " +
                 "then choose which checks to hide from it. Apps you haven't added here get " +
