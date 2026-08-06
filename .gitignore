@@ -7,3 +7,7 @@ local.properties
 .DS_Store
 .cxx/
 /captures/
+keystore.properties
+*.jks
+*.keystore
+/dist/
