@@ -14,16 +14,33 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 
 private const val SELF_PACKAGE = "space.bdeshi.veil"
 
-private val NULL_STRING_KEYS_BY_FEATURE = mapOf(
+// Keyed by the Settings class each key actually lives on, so we only ever install hooks on
+// the one class that could plausibly be asked about a given feature — never both.
+private val SECURE_NULL_STRING_KEYS_BY_FEATURE = mapOf(
     Features.ACCESSIBILITY to setOf("enabled_accessibility_services"),
 )
 
-private val ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
+private val SECURE_ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
     Features.ACCESSIBILITY to setOf("accessibility_enabled", "touch_exploration_enabled"),
-    Features.ADB to setOf("adb_enabled", "adb_wifi_enabled"),
-    Features.DEV_OPTIONS to setOf("development_settings_enabled"),
     Features.MOCK_LOCATION to setOf("mock_location", "allow_mock_location"),
 )
+
+private val GLOBAL_ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
+    Features.ADB to setOf("adb_enabled", "adb_wifi_enabled"),
+    Features.DEV_OPTIONS to setOf("development_settings_enabled"),
+)
+
+private fun keysForEnabledFeatures(
+    enabled: Set<String>,
+    byFeature: Map<String, Set<String>>,
+): Set<String> {
+    if (enabled.isEmpty() || byFeature.isEmpty()) return emptySet()
+    val result = mutableSetOf<String>()
+    for (feature in enabled) {
+        byFeature[feature]?.let { result.addAll(it) }
+    }
+    return result
+}
 
 class VeilHook : IXposedHookLoadPackage {
 
@@ -38,11 +55,15 @@ class VeilHook : IXposedHookLoadPackage {
             hookAccessibilityManager(lpparam)
         }
 
-        val nullStringKeys = enabled.flatMap { NULL_STRING_KEYS_BY_FEATURE[it].orEmpty() }.toSet()
-        val zeroValueKeys = enabled.flatMap { ZERO_VALUE_KEYS_BY_FEATURE[it].orEmpty() }.toSet()
-        if (nullStringKeys.isNotEmpty() || zeroValueKeys.isNotEmpty()) {
-            hookSettingsClass("android.provider.Settings\$Secure", lpparam, nullStringKeys, zeroValueKeys)
-            hookSettingsClass("android.provider.Settings\$Global", lpparam, nullStringKeys, zeroValueKeys)
+        val secureNullKeys = keysForEnabledFeatures(enabled, SECURE_NULL_STRING_KEYS_BY_FEATURE)
+        val secureZeroKeys = keysForEnabledFeatures(enabled, SECURE_ZERO_VALUE_KEYS_BY_FEATURE)
+        if (secureNullKeys.isNotEmpty() || secureZeroKeys.isNotEmpty()) {
+            hookSettingsClass("android.provider.Settings\$Secure", lpparam, secureNullKeys, secureZeroKeys)
+        }
+
+        val globalZeroKeys = keysForEnabledFeatures(enabled, GLOBAL_ZERO_VALUE_KEYS_BY_FEATURE)
+        if (globalZeroKeys.isNotEmpty()) {
+            hookSettingsClass("android.provider.Settings\$Global", lpparam, emptySet(), globalZeroKeys)
         }
 
         if (Features.ROOT_APPS in enabled) {
