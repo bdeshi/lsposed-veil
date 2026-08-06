@@ -1,5 +1,7 @@
 package space.bdeshi.veil
 
+data class FeatureInfo(val label: String, val description: String)
+
 object Features {
     const val PREFS_NAME = "veil_prefs"
     const val KEY_PREFIX = "features_"
@@ -21,13 +23,31 @@ object Features {
         BUILD_TAGS,
     )
 
-    val LABELS: LinkedHashMap<String, String> = linkedMapOf(
-        ACCESSIBILITY to "Accessibility services",
-        ADB to "USB / wireless debugging",
-        DEV_OPTIONS to "Developer options enabled",
-        MOCK_LOCATION to "Mock location (legacy flag only)",
-        ROOT_APPS to "Root/manager apps (PackageManager)",
-        BUILD_TAGS to "Build tags/type (test-keys, userdebug)",
+    val INFO: LinkedHashMap<String, FeatureInfo> = linkedMapOf(
+        ACCESSIBILITY to FeatureInfo(
+            "Hide accessibility services",
+            "This app will see zero accessibility services running, even if you have some enabled.",
+        ),
+        ADB to FeatureInfo(
+            "Hide USB / wireless debugging",
+            "This app will see debugging as off, regardless of your actual setting.",
+        ),
+        DEV_OPTIONS to FeatureInfo(
+            "Hide developer options",
+            "This app will see Developer Options as disabled.",
+        ),
+        MOCK_LOCATION to FeatureInfo(
+            "Hide mock location (legacy flag)",
+            "Only covers the old pre-Android-6 system flag — modern per-app mock location isn't covered.",
+        ),
+        ROOT_APPS to FeatureInfo(
+            "Hide root / manager apps",
+            "Apps in the \"hidden packages\" list below become invisible to this app's PackageManager lookups.",
+        ),
+        BUILD_TAGS to FeatureInfo(
+            "Hide test-keys / userdebug build",
+            "This app will see build tags as release-keys/user instead of your real build.",
+        ),
     )
 
     val DEFAULT_HIDDEN_PACKAGES: Set<String> = setOf(

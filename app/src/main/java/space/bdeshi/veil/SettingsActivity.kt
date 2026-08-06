@@ -74,9 +74,9 @@ class SettingsActivity : Activity() {
             setPadding(0, dp(24), 0, dp(4))
         })
         root.addView(TextView(this).apply {
-            text = "Used by the \"Root/manager apps\" toggle above — apps in this list become " +
-                "invisible to getPackageInfo/getInstalledPackages for any target app with that " +
-                "toggle on."
+            text = "Used by the \"Hide root / manager apps\" checkbox above — apps in this list " +
+                "become invisible to PackageManager lookups for any target app with that box " +
+                "checked."
             setPadding(0, 0, 0, dp(8))
         })
 
@@ -154,10 +154,15 @@ class SettingsActivity : Activity() {
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
         })
+        card.addView(TextView(this).apply {
+            text = "Checking a box below hides that thing from this app specifically — it stays " +
+                "on for every other app."
+            setPadding(0, 0, 0, dp(8))
+        })
 
-        for ((id, label) in Features.LABELS) {
+        for ((id, info) in Features.INFO) {
             card.addView(CheckBox(this).apply {
-                text = label
+                text = info.label
                 isChecked = id in enabled
                 setOnCheckedChangeListener { _, isChecked ->
                     val current = (prefs.getStringSet(Features.keyFor(pkg), Features.ALL) ?: Features.ALL).toMutableSet()
@@ -165,6 +170,11 @@ class SettingsActivity : Activity() {
                     prefs.edit().putStringSet(Features.keyFor(pkg), current).apply()
                     fixPermissions()
                 }
+            })
+            card.addView(TextView(this).apply {
+                text = info.description
+                textSize = 13f
+                setPadding(dp(32), 0, 0, dp(8))
             })
         }
 
