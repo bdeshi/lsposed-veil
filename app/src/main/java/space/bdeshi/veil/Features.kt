@@ -4,64 +4,40 @@ data class FeatureInfo(val label: String, val description: String)
 
 object Features {
     const val SELF_PACKAGE = "space.bdeshi.veil"
-    const val PREFS_NAME = "veil_prefs"
-    const val KEY_PREFIX = "features_"
-    const val HIDDEN_PACKAGES_KEY = "hidden_packages"
-    const val DISCOVERED_PACKAGES_KEY = "discovered_packages"
-    const val SELF_HIDDEN_MIGRATED_KEY = "self_hidden_migrated"
-    const val PROVIDER_AUTHORITY = "space.bdeshi.veil.provider"
 
-    const val ACCESSIBILITY = "accessibility"
-    const val ADB = "adb"
-    const val DEV_OPTIONS = "dev_options"
-    const val MOCK_LOCATION = "mock_location"
-    const val ROOT_APPS = "root_apps"
-    const val BUILD_TAGS = "build_tags"
-
-    val ALL: Set<String> = setOf(
-        ACCESSIBILITY,
-        ADB,
-        DEV_OPTIONS,
-        MOCK_LOCATION,
-        ROOT_APPS,
-        BUILD_TAGS,
-    )
-
-    val INFO: LinkedHashMap<String, FeatureInfo> = linkedMapOf(
-        ACCESSIBILITY to FeatureInfo(
-            "Hide accessibility services",
-            "This app will see zero accessibility services running, even if you have some enabled.",
+    // Shown in the settings screen. Every one of these is always applied — see VeilHook.
+    val INFO: List<FeatureInfo> = listOf(
+        FeatureInfo(
+            "Accessibility services",
+            "Apps see zero accessibility services running, even if you have some enabled.",
         ),
-        ADB to FeatureInfo(
-            "Hide USB / wireless debugging",
-            "This app will see debugging as off, regardless of your actual setting.",
+        FeatureInfo(
+            "USB / wireless debugging",
+            "Apps see debugging as off, regardless of your actual setting.",
         ),
-        DEV_OPTIONS to FeatureInfo(
-            "Hide developer options",
-            "This app will see Developer Options as disabled.",
+        FeatureInfo(
+            "Developer options",
+            "Apps see Developer Options as disabled.",
         ),
-        MOCK_LOCATION to FeatureInfo(
-            "Hide mock location (legacy flag)",
+        FeatureInfo(
+            "Mock location (legacy flag)",
             "Only covers the old pre-Android-6 system flag — modern per-app mock location isn't covered.",
         ),
-        ROOT_APPS to FeatureInfo(
-            "Hide root / manager apps",
-            "Apps in the \"hidden packages\" list below become invisible to this app's PackageManager lookups.",
+        FeatureInfo(
+            "Root / manager apps",
+            "The packages below are invisible to apps' PackageManager lookups.",
         ),
-        BUILD_TAGS to FeatureInfo(
-            "Hide test-keys / userdebug build",
-            "This app will see build tags as release-keys/user instead of your real build.",
+        FeatureInfo(
+            "Test-keys / userdebug build",
+            "Apps see build tags as release-keys/user instead of your real build.",
         ),
     )
 
-    // Veil itself belongs here too: an installed hooking module is as much a tell as a root
-    // manager. Hiding it from PackageManager doesn't affect discovery, which resolves Veil's
-    // provider through ActivityManager rather than the hooked ApplicationPackageManager.
-    val DEFAULT_HIDDEN_PACKAGES: Set<String> = setOf(
+    // Fixed at build time; edit and rebuild to change. Veil itself is here too: an installed
+    // hooking module is as much a tell as a root manager.
+    val HIDDEN_PACKAGES: Set<String> = setOf(
         "me.weishu.kernelsu",
         "com.topjohnwu.magisk",
         SELF_PACKAGE,
     )
-
-    fun keyFor(packageName: String): String = KEY_PREFIX + packageName
 }

@@ -1,139 +1,50 @@
 package space.bdeshi.veil
 
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
-import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 
 // Keyed by the Settings class each key actually lives on, so we only ever install hooks on
-// the one class that could plausibly be asked about a given feature — never both.
-private val SECURE_NULL_STRING_KEYS_BY_FEATURE = mapOf(
-    Features.ACCESSIBILITY to setOf("enabled_accessibility_services"),
+// the one class that could plausibly be asked about a given key — never both.
+private val SECURE_NULL_STRING_KEYS = setOf("enabled_accessibility_services")
+
+private val SECURE_ZERO_VALUE_KEYS = setOf(
+    "accessibility_enabled",
+    "touch_exploration_enabled",
+    "mock_location",
+    "allow_mock_location",
 )
 
-private val SECURE_ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
-    Features.ACCESSIBILITY to setOf("accessibility_enabled", "touch_exploration_enabled"),
-    Features.MOCK_LOCATION to setOf("mock_location", "allow_mock_location"),
+private val GLOBAL_ZERO_VALUE_KEYS = setOf(
+    "adb_enabled",
+    "adb_wifi_enabled",
+    "development_settings_enabled",
 )
 
-private val GLOBAL_ZERO_VALUE_KEYS_BY_FEATURE = mapOf(
-    Features.ADB to setOf("adb_enabled", "adb_wifi_enabled"),
-    Features.DEV_OPTIONS to setOf("development_settings_enabled"),
-)
-
-private fun keysForEnabledFeatures(
-    enabled: Set<String>,
-    byFeature: Map<String, Set<String>>,
-): Set<String> {
-    if (enabled.isEmpty() || byFeature.isEmpty()) return emptySet()
-    val result = mutableSetOf<String>()
-    for (feature in enabled) {
-        byFeature[feature]?.let { result.addAll(it) }
-    }
-    return result
-}
-
+/**
+ * Applies the same fixed baseline to every app in Veil's LSPosed scope. There is deliberately
+ * no per-app configuration: a hooked app can't read anything Veil's own app saves (its data
+ * dir is private to it, and the framework's shared-prefs redirect for legacy modules depends
+ * on the framework hooking Veil's own process, which Vector doesn't reliably do), so settings
+ * would silently be ignored. What's hidden lives in this file and Features.HIDDEN_PACKAGES;
+ * change it there and rebuild.
+ */
 class VeilHook : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
         if (lpparam.packageName == Features.SELF_PACKAGE) return
 
-        reportScoped(lpparam)
-
-        val prefs = openPrefs()
-        val enabled = readEnabledFeatures(prefs, lpparam.packageName)
-        if (enabled.isEmpty()) return
-
-        if (Features.ACCESSIBILITY in enabled) {
-            hookAccessibilityManager(lpparam)
-        }
-
-        val secureNullKeys = keysForEnabledFeatures(enabled, SECURE_NULL_STRING_KEYS_BY_FEATURE)
-        val secureZeroKeys = keysForEnabledFeatures(enabled, SECURE_ZERO_VALUE_KEYS_BY_FEATURE)
-        if (secureNullKeys.isNotEmpty() || secureZeroKeys.isNotEmpty()) {
-            hookSettingsClass("android.provider.Settings\$Secure", lpparam, secureNullKeys, secureZeroKeys)
-        }
-
-        val globalZeroKeys = keysForEnabledFeatures(enabled, GLOBAL_ZERO_VALUE_KEYS_BY_FEATURE)
-        if (globalZeroKeys.isNotEmpty()) {
-            hookSettingsClass("android.provider.Settings\$Global", lpparam, emptySet(), globalZeroKeys)
-        }
-
-        if (Features.ROOT_APPS in enabled) {
-            val hiddenPackages = readHiddenPackages(prefs)
-            if (hiddenPackages.isNotEmpty()) {
-                hookPackageManager(lpparam, hiddenPackages)
-            }
-        }
-
-        if (Features.BUILD_TAGS in enabled) {
-            spoofBuildTags()
-        }
-    }
-
-    // Lets Veil's own settings screen list this app automatically, without the user re-typing
-    // a package name it can already see was actually injected. Application#attach is the
-    // earliest reliable point at which a real Context exists in the hooked process.
-    private fun reportScoped(lpparam: LoadPackageParam) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                "android.app.Application",
-                lpparam.classLoader,
-                "attach",
-                Context::class.java,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        try {
-                            val context = param.args[0] as Context
-                            // Most apps can't see Veil (Android 11+ package visibility), and
-                            // then can't reach its provider either. Checking first skips the
-                            // doomed call, and with it the "Failed to find provider info"
-                            // line naming Veil that the framework would write to the app's
-                            // own, app-readable logcat. Such apps are added via the picker.
-                            if (context.packageManager.resolveContentProvider(Features.PROVIDER_AUTHORITY, 0) == null) {
-                                return
-                            }
-                            context.contentResolver.call(
-                                Uri.parse("content://${Features.PROVIDER_AUTHORITY}"),
-                                "register",
-                                lpparam.packageName,
-                                null,
-                            )
-                        } catch (t: Throwable) {
-                            // Veil app unreachable — doesn't affect the hiding hooks below.
-                        }
-                    }
-                },
-            )
-        } catch (t: Throwable) {
-            // Application#attach signature not present — safe to skip discovery only.
-        }
-    }
-
-    private fun openPrefs(): XSharedPreferences? {
-        return try {
-            XSharedPreferences(Features.SELF_PACKAGE, Features.PREFS_NAME).apply { reload() }
-        } catch (t: Throwable) {
-            null
-        }
-    }
-
-    private fun readEnabledFeatures(prefs: XSharedPreferences?, packageName: String): Set<String> {
-        // Config unreadable (never configured, or permissions not yet fixed) — fail open to "hide everything".
-        return prefs?.getStringSet(Features.keyFor(packageName), Features.ALL) ?: Features.ALL
-    }
-
-    private fun readHiddenPackages(prefs: XSharedPreferences?): Set<String> {
-        return prefs?.getStringSet(Features.HIDDEN_PACKAGES_KEY, Features.DEFAULT_HIDDEN_PACKAGES)
-            ?: Features.DEFAULT_HIDDEN_PACKAGES
+        hookAccessibilityManager(lpparam)
+        hookSettingsClass("android.provider.Settings\$Secure", lpparam, SECURE_NULL_STRING_KEYS, SECURE_ZERO_VALUE_KEYS)
+        hookSettingsClass("android.provider.Settings\$Global", lpparam, emptySet(), GLOBAL_ZERO_VALUE_KEYS)
+        hookPackageManager(lpparam, Features.HIDDEN_PACKAGES)
+        spoofBuildTags()
     }
 
     private fun hookAccessibilityManager(lpparam: LoadPackageParam) {
