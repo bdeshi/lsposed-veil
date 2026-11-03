@@ -3,6 +3,7 @@ package space.bdeshi.veil
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.VersionedPackage
 import android.os.Build
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
@@ -157,6 +158,36 @@ class VeilHook : IXposedHookLoadPackage {
             }
         }
 
+        // Same lookup keyed by a VersionedPackage rather than a name.
+        val throwIfVersionedHidden = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                val name = (param.args.getOrNull(0) as? VersionedPackage)?.packageName
+                if (name != null && name in hiddenPackages) {
+                    param.throwable = PackageManager.NameNotFoundException(name)
+                }
+            }
+        }
+
+        // For an unknown package the real getApplicationEnabledSetting throws an unchecked
+        // IllegalArgumentException, not NameNotFoundException.
+        val throwUnknownIfHidden = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                val name = param.args.getOrNull(0) as? String
+                if (name != null && name in hiddenPackages) {
+                    param.throwable = IllegalArgumentException("Unknown package: $name")
+                }
+            }
+        }
+
+        val nullIfHidden = object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                val name = param.args.getOrNull(0) as? String
+                if (name != null && name in hiddenPackages) {
+                    param.result = null
+                }
+            }
+        }
+
         val filterList = object : XC_MethodHook() {
             override fun afterHookedMethod(param: MethodHookParam) {
                 @Suppress("UNCHECKED_CAST")
@@ -189,6 +220,27 @@ class VeilHook : IXposedHookLoadPackage {
             } catch (t: Throwable) {
                 // Not present with this signature on this API level.
             }
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getPackageUid", stringType, flagsType, throwIfHidden)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+            try {
+                XposedHelpers.findAndHookMethod(clazz, "getPackageInfo", VersionedPackage::class.java, flagsType, throwIfVersionedHidden)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
+            }
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(clazz, "getLaunchIntentForPackage", stringType, nullIfHidden)
+        } catch (t: Throwable) {
+            // Not present on this API level.
+        }
+        try {
+            XposedHelpers.findAndHookMethod(clazz, "getApplicationEnabledSetting", stringType, throwUnknownIfHidden)
+        } catch (t: Throwable) {
+            // Not present on this API level.
         }
         for (flagsType in appFlagsClasses) {
             try {
