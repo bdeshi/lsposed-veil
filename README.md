@@ -34,8 +34,12 @@ Every app in scope gets all of these. Veil's settings screen is a read-only summ
 | USB / wireless debugging | `adb_enabled` / `adb_wifi_enabled`                     |
 | Developer options        | Developer Options enabled state                        |
 | Mock location            | Legacy pre-Marshmallow flag only                       |
-| Root / manager apps      | Fixed list: KernelSU, Magisk, Veil itself              |
+| Root / manager apps      | Fixed list of ~30 packages (see `Features.kt`)         |
 | Build tags/type          | Real build swapped for `release-keys` / `user`         |
+
+The package list covers root managers (Magisk and forks, KernelSU and forks, APatch), module
+managers, hook frameworks and their managers, and older su apps, plus Veil itself. Xposed modules in general have no common package name, so they
+aren't covered by name.
 
 Doesn't cover native-level root/hook detection or remote attestation (Play Integrity,
 SafetyNet) — that's your Zygisk implementation's job, not Veil's.

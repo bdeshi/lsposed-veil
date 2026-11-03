@@ -35,9 +35,48 @@ object Features {
 
     // Fixed at build time; edit and rebuild to change. Veil itself is here too: an installed
     // hooking module is as much a tell as a root manager.
+    //
+    // Well-known root managers, module managers, hook frameworks and older su apps, by package
+    // name. Packages that aren't installed match nothing, so a name that's wrong or absent is
+    // harmless. Not covered: Xposed modules in general (they have no common package name;
+    // detectors find them by manifest metadata).
     val HIDDEN_PACKAGES: Set<String> = setOf(
-        "me.weishu.kernelsu",
-        "com.topjohnwu.magisk",
         SELF_PACKAGE,
+
+        // Root managers: Magisk and forks, KernelSU and forks, APatch
+        "com.topjohnwu.magisk",
+        "io.github.huskydg.magisk",
+        "io.github.vvb2060.magisk",
+        "me.weishu.kernelsu",
+        "com.rifsxd.ksunext",
+        "com.sukisu.ultra",
+        "me.bmax.apatch",
+
+        // Module managers and helpers
+        "com.dergoogler.mmrl",
+        "com.dergoogler.mmrl.wx",
+        "com.fox2code.mmm",
+        "io.github.a13e300.ksuwebui",
+
+        // Hook frameworks and their managers
+        "org.matrix.vector.manager",
+        "org.lsposed.manager",
+        "org.lsposed.lspatch",
+        "de.robv.android.xposed.installer",
+        "org.meowcat.edxposed.manager",
+        "com.solohsu.android.edxp.manager",
+        "me.weishu.exp",
+        "io.va.exposed",
+        "com.saurik.substrate",
+
+        // Older su apps and one-click root
+        "eu.chainfire.supersu",
+        "com.koushikdutta.superuser",
+        "com.noshufou.android.su",
+        "com.noshufou.android.su.elite",
+        "com.thirdparty.superuser",
+        "com.yellowes.su",
+        "me.phh.superuser",
+        "com.alephzain.framaroot",
     )
 }

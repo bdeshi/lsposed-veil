@@ -105,14 +105,16 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(featureCard, marginTop(dp(8)))
 
-        root.addView(sectionTitle("Hidden packages"), marginTop(dp(16)))
+        root.addView(sectionTitle("Hidden packages (${Features.HIDDEN_PACKAGES.size})"), marginTop(dp(16)))
         root.addView(TextView(this).apply {
-            text = "Fixed in this build — edit Features.HIDDEN_PACKAGES and rebuild to change."
+            text = "Fixed in this build — edit Features.HIDDEN_PACKAGES and rebuild to change. " +
+                "Packages that aren't installed match nothing."
             textSize = 13f
             alpha = 0.8f
             setPadding(0, dp(4), 0, dp(8))
         })
-        root.addView(ChipGroup(this).apply {
+        val packageChips = ChipGroup(this).apply {
+            visibility = View.GONE
             for (pkg in Features.HIDDEN_PACKAGES.sorted()) {
                 addView(Chip(this@SettingsActivity).apply {
                     text = pkg
@@ -120,7 +122,16 @@ class SettingsActivity : AppCompatActivity() {
                     isCheckable = false
                 })
             }
+        }
+        root.addView(MaterialButton(this).apply {
+            text = "Show list ▾"
+            setOnClickListener {
+                val show = packageChips.visibility != View.VISIBLE
+                packageChips.visibility = if (show) View.VISIBLE else View.GONE
+                text = if (show) "Hide list ▴" else "Show list ▾"
+            }
         })
+        root.addView(packageChips)
 
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
     }
