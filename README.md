@@ -35,7 +35,7 @@ Per app, per feature — anything not listed gets everything hidden by default.
 | USB / wireless debugging | `adb_enabled` / `adb_wifi_enabled`                     |
 | Developer options        | Developer Options enabled state                        |
 | Mock location            | Legacy pre-Marshmallow flag only                       |
-| Root / manager apps      | Configurable package list (default: KernelSU, Magisk)  |
+| Root / manager apps      | Package list (default: KernelSU, Magisk, Veil itself)  |
 | Build tags/type          | Real build swapped for `release-keys` / `user`         |
 
 Doesn't cover native-level root/hook detection or remote attestation (Play Integrity,

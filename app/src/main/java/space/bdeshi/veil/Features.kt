@@ -3,10 +3,12 @@ package space.bdeshi.veil
 data class FeatureInfo(val label: String, val description: String)
 
 object Features {
+    const val SELF_PACKAGE = "space.bdeshi.veil"
     const val PREFS_NAME = "veil_prefs"
     const val KEY_PREFIX = "features_"
     const val HIDDEN_PACKAGES_KEY = "hidden_packages"
     const val DISCOVERED_PACKAGES_KEY = "discovered_packages"
+    const val SELF_HIDDEN_MIGRATED_KEY = "self_hidden_migrated"
     const val PROVIDER_AUTHORITY = "space.bdeshi.veil.provider"
 
     const val ACCESSIBILITY = "accessibility"
@@ -52,9 +54,13 @@ object Features {
         ),
     )
 
+    // Veil itself belongs here too: an installed hooking module is as much a tell as a root
+    // manager. Hiding it from PackageManager doesn't affect discovery, which resolves Veil's
+    // provider through ActivityManager rather than the hooked ApplicationPackageManager.
     val DEFAULT_HIDDEN_PACKAGES: Set<String> = setOf(
         "me.weishu.kernelsu",
         "com.topjohnwu.magisk",
+        SELF_PACKAGE,
     )
 
     fun keyFor(packageName: String): String = KEY_PREFIX + packageName

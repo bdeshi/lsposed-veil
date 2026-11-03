@@ -13,8 +13,6 @@ import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 
-private const val SELF_PACKAGE = "space.bdeshi.veil"
-
 // Keyed by the Settings class each key actually lives on, so we only ever install hooks on
 // the one class that could plausibly be asked about a given feature — never both.
 private val SECURE_NULL_STRING_KEYS_BY_FEATURE = mapOf(
@@ -46,7 +44,7 @@ private fun keysForEnabledFeatures(
 class VeilHook : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
-        if (lpparam.packageName == SELF_PACKAGE) return
+        if (lpparam.packageName == Features.SELF_PACKAGE) return
 
         reportScoped(lpparam)
 
@@ -114,7 +112,7 @@ class VeilHook : IXposedHookLoadPackage {
 
     private fun openPrefs(): XSharedPreferences? {
         return try {
-            XSharedPreferences(SELF_PACKAGE, Features.PREFS_NAME).apply { reload() }
+            XSharedPreferences(Features.SELF_PACKAGE, Features.PREFS_NAME).apply { reload() }
         } catch (t: Throwable) {
             null
         }

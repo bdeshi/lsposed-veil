@@ -56,6 +56,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences(Features.PREFS_NAME, Context.MODE_PRIVATE)
+        migrateSelfIntoHiddenList()
 
         val padding = dp(16)
         val root = LinearLayout(this).apply {
@@ -201,6 +202,18 @@ class SettingsActivity : AppCompatActivity() {
             addView(content)
         }
         return cardView to content
+    }
+
+    // A list saved before Veil joined DEFAULT_HIDDEN_PACKAGES never picks up the new default,
+    // so add it once. The flag keeps a later manual removal from being undone.
+    private fun migrateSelfIntoHiddenList() {
+        if (prefs.getBoolean(Features.SELF_HIDDEN_MIGRATED_KEY, false)) return
+        val editor = prefs.edit().putBoolean(Features.SELF_HIDDEN_MIGRATED_KEY, true)
+        if (prefs.contains(Features.HIDDEN_PACKAGES_KEY)) {
+            editor.putStringSet(Features.HIDDEN_PACKAGES_KEY, hiddenPackages() + Features.SELF_PACKAGE)
+        }
+        editor.apply()
+        fixPermissions()
     }
 
     private fun hiddenPackages(): Set<String> =
