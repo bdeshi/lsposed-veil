@@ -4,7 +4,13 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.VersionedPackage
+import android.content.ContentResolver
+import android.database.Cursor
+import android.database.MatrixCursor
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.CancellationSignal
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
@@ -44,6 +50,7 @@ class VeilHook : IXposedHookLoadPackage {
         hookAccessibilityManager(lpparam)
         hookSettingsClass("android.provider.Settings\$Secure", lpparam, SECURE_NULL_STRING_KEYS, SECURE_ZERO_VALUE_KEYS)
         hookSettingsClass("android.provider.Settings\$Global", lpparam, emptySet(), GLOBAL_ZERO_VALUE_KEYS)
+        hookSettingsProviderAccess(lpparam)
         hookPackageManager(lpparam, Features.HIDDEN_PACKAGES)
         spoofBuildTags()
     }
@@ -134,6 +141,120 @@ class VeilHook : IXposedHookLoadPackage {
                 } catch (t: Throwable) {
                     // Not present with this signature on this API level.
                 }
+            }
+        }
+    }
+
+    // The Settings classes above end up in the settings provider; an app can skip them and reach
+    // it directly, either through ContentResolver.call(content://settings/<table>, "GET_<table>",
+    // key), whose Bundle carries the answer under "value", or through ContentResolver.query,
+    // whose cursor carries name/value rows. Mask both. The Settings classes' own cache goes
+    // through IContentProvider, not ContentResolver, so nothing is masked twice.
+    private fun hookSettingsProviderAccess(lpparam: LoadPackageParam) {
+        val resolverClass = XposedHelpers.findClassIfExists("android.content.ContentResolver", lpparam.classLoader)
+            ?: return
+
+        val maskValue = object : XC_MethodHook() {
+            override fun afterHookedMethod(param: MethodHookParam) {
+                val authority = when (val target = param.args.getOrNull(0)) {
+                    is Uri -> target.authority
+                    is String -> target
+                    else -> return
+                }
+                if (authority != "settings") return
+                val method = param.args.getOrNull(1) as? String ?: return
+                val key = param.args.getOrNull(2) as? String ?: return
+                val result = param.result as? Bundle ?: return
+                when (method) {
+                    "GET_secure" -> when (key) {
+                        in SECURE_NULL_STRING_KEYS -> result.putString("value", null)
+                        in SECURE_ZERO_VALUE_KEYS -> result.putString("value", "0")
+                    }
+                    "GET_global" -> if (key in GLOBAL_ZERO_VALUE_KEYS) result.putString("value", "0")
+                }
+            }
+        }
+
+        // Every query() overload funnels into this one.
+        val maskCursor = object : XC_MethodHook() {
+            override fun afterHookedMethod(param: MethodHookParam) {
+                val uri = param.args.getOrNull(0) as? Uri ?: return
+                if (uri.authority != "settings") return
+                val table = uri.pathSegments?.firstOrNull() ?: return
+                if (table != "secure" && table != "global") return
+                val cursor = param.result as? Cursor ?: return
+                val nameIndex = cursor.getColumnIndex("name")
+                val valueIndex = cursor.getColumnIndex("value")
+                if (valueIndex < 0) return
+                // A caller can project just "value". The key is then only in the URI path
+                // (settings/global/<key>) or in the selection args (name=?), so take it from there.
+                val queriedName = if (nameIndex >= 0) null else {
+                    uri.pathSegments.getOrNull(1)
+                        ?: (param.args.getOrNull(2) as? Bundle)
+                            ?.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS)?.singleOrNull()
+                }
+                if (nameIndex < 0 && queriedName == null) return
+
+                fun masked(name: String?): Pair<Boolean, String?> = when (table) {
+                    "secure" -> when (name) {
+                        in SECURE_NULL_STRING_KEYS -> true to null
+                        in SECURE_ZERO_VALUE_KEYS -> true to "0"
+                        else -> false to null
+                    }
+                    "global" -> if (name in GLOBAL_ZERO_VALUE_KEYS) true to "0" else false to null
+                    else -> false to null
+                }
+
+                val rows = mutableListOf<Array<Any?>>()
+                var changed = false
+                if (cursor.moveToFirst()) {
+                    do {
+                        val row = arrayOfNulls<Any?>(cursor.columnCount)
+                        for (i in row.indices) {
+                            row[i] = when (cursor.getType(i)) {
+                                Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(i)
+                                Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(i)
+                                Cursor.FIELD_TYPE_STRING -> cursor.getString(i)
+                                Cursor.FIELD_TYPE_BLOB -> cursor.getBlob(i)
+                                else -> null
+                            }
+                        }
+                        val (hide, value) = masked(if (nameIndex >= 0) row[nameIndex] as? String else queriedName)
+                        if (hide) {
+                            row[valueIndex] = value
+                            changed = true
+                        }
+                        rows.add(row)
+                    } while (cursor.moveToNext())
+                }
+                if (!changed) {
+                    cursor.moveToPosition(-1)
+                    return
+                }
+                val replacement = MatrixCursor(cursor.columnNames, rows.size)
+                rows.forEach { replacement.addRow(it) }
+                cursor.close()
+                param.result = replacement
+            }
+        }
+
+        val stringType = String::class.java
+        try {
+            XposedHelpers.findAndHookMethod(
+                resolverClass, "query", Uri::class.java, Array<String>::class.java,
+                Bundle::class.java, CancellationSignal::class.java, maskCursor,
+            )
+        } catch (t: Throwable) {
+            // Not present on this API level.
+        }
+        for (signature in listOf(
+            arrayOf<Class<*>>(Uri::class.java, stringType, stringType, Bundle::class.java),
+            arrayOf<Class<*>>(stringType, stringType, stringType, Bundle::class.java),
+        )) {
+            try {
+                XposedHelpers.findAndHookMethod(resolverClass, "call", *signature, maskValue)
+            } catch (t: Throwable) {
+                // Not present with this signature on this API level.
             }
         }
     }
