@@ -93,6 +93,14 @@ class VeilHook : IXposedHookLoadPackage {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
                             val context = param.args[0] as Context
+                            // Most apps can't see Veil (Android 11+ package visibility), and
+                            // then can't reach its provider either. Checking first skips the
+                            // doomed call, and with it the "Failed to find provider info"
+                            // line naming Veil that the framework would write to the app's
+                            // own, app-readable logcat. Such apps are added via the picker.
+                            if (context.packageManager.resolveContentProvider(Features.PROVIDER_AUTHORITY, 0) == null) {
+                                return
+                            }
                             context.contentResolver.call(
                                 Uri.parse("content://${Features.PROVIDER_AUTHORITY}"),
                                 "register",

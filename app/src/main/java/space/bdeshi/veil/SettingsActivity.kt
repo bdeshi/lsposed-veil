@@ -1,16 +1,23 @@
 package space.bdeshi.veil
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -19,6 +26,8 @@ import com.google.android.material.chip.ChipGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.io.File
+
+private data class LaunchableApp(val label: String, val pkg: String)
 
 private val HELP_TIPS: List<Pair<String, String>> = listOf(
     "Target app still won't launch?" to
@@ -30,6 +39,10 @@ private val HELP_TIPS: List<Pair<String, String>> = listOf(
         "Standalone Zygisk modules (e.g. Zygisk Next / ReZygisk) can carry their own independent " +
         "DenyList on top of KernelSU's. If an app is still being skipped after fixing the above, " +
         "check there too.",
+    "Scoped app doesn't show up here?" to
+        "Android 11+ only lets an app reach packages it can see, and most apps can't see " +
+        "Veil, so their first-launch check-in never arrives. Veil still hides everything from " +
+        "them by default; use \"Add app\" to give one its own settings.",
     "Changed a setting but nothing happened?" to
         "Force-stop and reopen the target app. Veil reads its config once when that app's " +
         "process starts, so changes here (or to LSPosed scope) only take effect on the next " +
@@ -106,11 +119,16 @@ class SettingsActivity : AppCompatActivity() {
         root.addView(sectionTitle("Apps"))
         root.addView(TextView(this).apply {
             text = "Scope this module to a target app in LSPosed Manager, then open that app " +
-                "once — it shows up here automatically. Apps not listed here get everything " +
-                "hidden by default."
+                "once — it shows up here automatically if it can see Veil. If it doesn't, add " +
+                "it below. Apps not listed here get everything hidden by default."
             textSize = 13f
             alpha = 0.8f
             setPadding(0, dp(4), 0, dp(8))
+        })
+
+        root.addView(MaterialButton(this).apply {
+            text = "Add app"
+            setOnClickListener { showAppPicker() }
         })
 
         appListContainer = LinearLayout(this).apply {
@@ -233,7 +251,7 @@ class SettingsActivity : AppCompatActivity() {
         if (packages.isEmpty()) {
             appListContainer.addView(TextView(this).apply {
                 text = "No apps yet — scope Veil to a target app in LSPosed Manager and open " +
-                    "it once."
+                    "it once, or add one with \"Add app\"."
                 textSize = 13f
                 alpha = 0.8f
             })
@@ -253,12 +271,24 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        titleRow.addView(TextView(this).apply {
-            text = pkg
+        val label = appLabel(pkg)
+        val titles = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        titles.addView(TextView(this).apply {
+            text = label ?: pkg
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        if (label != null) {
+            titles.addView(TextView(this).apply {
+                text = pkg
+                textSize = 12f
+                alpha = 0.7f
+            })
+        }
+        titleRow.addView(titles)
         if (isDiscoveredOnly) {
             titleRow.addView(Chip(this).apply {
                 text = "Auto-detected"
@@ -305,6 +335,84 @@ class SettingsActivity : AppCompatActivity() {
         })
 
         return cardView
+    }
+
+    // Null when Veil can't see the package: only launchable apps are in its <queries>.
+    private fun appLabel(pkg: String): String? = try {
+        packageManager.getApplicationInfo(pkg, 0).loadLabel(packageManager).toString()
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun launchableApps(): List<LaunchableApp> {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager.queryIntentActivities(intent, 0)
+            .distinctBy { it.activityInfo.packageName }
+            .map { LaunchableApp(it.loadLabel(packageManager).toString(), it.activityInfo.packageName) }
+            .sortedBy { it.label.lowercase() }
+    }
+
+    // Loading labels for every launchable app takes a moment, so it runs off the UI thread.
+    private fun showAppPicker() {
+        Thread {
+            val listed = configuredPackages() + discoveredPackages()
+            val apps = launchableApps().filter { it.pkg !in listed }
+            runOnUiThread {
+                if (!isFinishing) showAppPickerDialog(apps)
+            }
+        }.start()
+    }
+
+    private fun showAppPickerDialog(apps: List<LaunchableApp>) {
+        val adapter = object : ArrayAdapter<LaunchableApp>(
+            this, android.R.layout.simple_list_item_2, android.R.id.text1, apps.toMutableList(),
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                val app = getItem(position) ?: return view
+                view.findViewById<TextView>(android.R.id.text1).text = app.label
+                view.findViewById<TextView>(android.R.id.text2).text = app.pkg
+                return view
+            }
+        }
+
+        val search = textInput("Search apps")
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val query = s.toString().trim()
+                adapter.clear()
+                adapter.addAll(apps.filter {
+                    it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true)
+                })
+            }
+        })
+
+        val list = ListView(this).apply { this.adapter = adapter }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(TextInputLayout(this@SettingsActivity).apply { addView(search) })
+            addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(360)))
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Add app")
+            .setView(body)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        // Saving the default feature set is what makes an app "configured", so it gets a card
+        // whether or not it ever checks in.
+        list.setOnItemClickListener { _, _, position, _ ->
+            val app = adapter.getItem(position) ?: return@setOnItemClickListener
+            prefs.edit().putStringSet(Features.keyFor(app.pkg), Features.ALL).apply()
+            fixPermissions()
+            refreshAppList()
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun refreshHiddenPackages() {

@@ -1,5 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Lets the "Add app" picker list launchable apps, including ones that can't see Veil
+         and so never reach its discovery provider. This only widens what Veil can see; it
+         doesn't make Veil any more visible to the apps it hides things from. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
