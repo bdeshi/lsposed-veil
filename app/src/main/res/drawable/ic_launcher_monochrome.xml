@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed-icon layer: only alpha counts; the launcher supplies the tint -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.88"
+        android:scaleY="0.88">
+        <path
+            android:fillAlpha="0.3"
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M32.5,56.5 A24,24 0 1,1 80.5,56.5 A24,24 0 1,1 32.5,56.5 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M35.31,67.77 A24,24 0 1,0 67.77,35.31 A23,23 0 0,1 35.31,67.77 Z" />
+    </group>
+</vector>

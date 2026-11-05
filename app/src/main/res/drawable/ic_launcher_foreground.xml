@@ -1,13 +1,31 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- A moon-like disc, partially eclipsed by a diagonal veil (cut in the background color) -->
-    <path
-        android:fillColor="#F2EDE4"
-        android:pathData="M28,54 A26,26 0 1,1 80,54 A26,26 0 1,1 28,54 Z" />
-    <path
-        android:fillColor="#1B1B3A"
-        android:pathData="M12,68 L36,92 L96,32 L72,8 Z" />
+    <!-- A crescent moon with the rest of the disc still faintly visible: hidden, not removed -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.88"
+        android:scaleY="0.88">
+        <path
+            android:fillAlpha="0.16"
+            android:fillColor="#C9CCF2"
+            android:pathData="M32.5,56.5 A24,24 0 1,1 80.5,56.5 A24,24 0 1,1 32.5,56.5 Z" />
+        <path android:pathData="M35.31,67.77 A24,24 0 1,0 67.77,35.31 A23,23 0 0,1 35.31,67.77 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="80.5"
+                    android:startY="80.5"
+                    android:endX="35.31"
+                    android:endY="35.31">
+                    <item android:offset="0" android:color="#FFB4B6E4" />
+                    <item android:offset="1" android:color="#FFFFFFFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
 </vector>
